@@ -1,0 +1,85 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "qa-orchestrator",
+  "model": "cloudru/deepseek-ai-deepseek-v4-flash",
+  "providers": {
+    "cloudru": {
+      "name": "Cloud.ru Foundation Models",
+      "package": "@ai-sdk/openai-compatible",
+      "settings": {
+        "baseURL": "https://foundation-models.api.cloud.ru/v1",
+        "apiKey": "{env:CLOUDRU_API_KEY}",
+        "headerTimeout": 300000,
+        "chunkTimeout": 300000
+      },
+      "models": {
+        "qwen-qwen3.7-flash": {
+          "name": "qwen/qwen3.7-flash",
+          "modelID": "qwen/qwen3.7-flash",
+          "capabilities": {
+            "tools": true
+          },
+          "limit": {
+            "context": 1000000
+          }
+        },
+        "deepseek-ai-deepseek-v4-flash": {
+          "name": "deepseek-ai/DeepSeek-V4-Flash",
+          "modelID": "deepseek-ai/DeepSeek-V4-Flash",
+          "capabilities": {
+            "tools": true,
+            "reasoning": {
+              "supported": true
+            }
+          },
+          "limit": {
+            "context": 1048576
+          }
+        },
+        "qwen-qwen3-coder-next": {
+          "name": "Qwen/Qwen3-Coder-Next",
+          "modelID": "Qwen/Qwen3-Coder-Next",
+          "capabilities": {
+            "tools": true
+          },
+          "limit": {
+            "context": 262144
+          }
+        },
+        "deepseek-ai-deepseek-v4-pro": {
+          "name": "deepseek-ai/DeepSeek-V4-Pro",
+          "modelID": "deepseek-ai/DeepSeek-V4-Pro",
+          "capabilities": {
+            "tools": true,
+            "reasoning": {
+              "supported": true
+            }
+          },
+          "limit": {
+            "context": 1048576
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "servers": {
+      "atlassian": {
+        "type": "local",
+        "command": [
+          "bash",
+          ".opencode/mcp/atlassian-mcp.sh"
+        ],
+        "codemode": false
+      },
+      "testops": {
+        "type": "local",
+        "command": [
+          "bash",
+          ".opencode/mcp/allure-mcp.sh"
+        ],
+        "codemode": false
+      }
+    }
+  }
+}

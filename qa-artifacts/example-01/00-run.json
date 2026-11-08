@@ -1,0 +1,13 @@
+{
+  "run_id": "example-01",
+  "version": "1.0",
+  "status": "in_progress",
+  "stages": {
+    "requirements_analysis": {
+      "status": "done",
+      "gate": "passed",
+      "comment": "G1 пройден: 3 требования (R-1…R-3), 5 неоднозначностей, 5 пробелов, 4 риска, 6 открытых вопросов. Противоречий нет. Артефакт 01-requirements-review.md создан."
+    }
+  },
+  "errors": []
+}
