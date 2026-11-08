@@ -256,8 +256,8 @@
 
 Доступ к внешним системам дают два локальных MCP-сервера, которые opencode запускает по stdio:
 
-- `atlassian` (пакет `mcp-atlassian`, скрипт `.opencode/mcp/atlassian-mcp.sh`) — Jira и Confluence;
-- `testops` (пакет `allure-testops-mcp`, скрипт `.opencode/mcp/allure-mcp.sh`) — система управления
+- `atlassian` (пакет `mcp-atlassian`, скрипт `.opencode/tools/atlassian-mcp.sh`) — Jira и Confluence;
+- `testops` (пакет `allure-testops-mcp`, скрипт `.opencode/tools/allure-mcp.sh`) — система управления
   тестами.
 
 Токены серверы читают из файлов во внешнем каталоге секретов (один файл на приложение, права 600;

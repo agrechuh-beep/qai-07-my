@@ -122,8 +122,8 @@ AGENTS.md                       правила процесса: роли, ар�
 opencode.json                   агент по умолчанию, провайдер моделей, 4 модели (секретов нет)
 .opencode/agents/*.md           описания агентов: роль, вход, выход, права
 .opencode/skills/<имя>/SKILL.md скилы этапов: процедура, правила, критерии завершения
-.opencode/mcp/atlassian-mcp.sh  запуск локального MCP-сервера для трекера и документации
-.opencode/mcp/allure-mcp.sh     запуск локального MCP-сервера для системы управления тестами
+.opencode/tools/atlassian-mcp.sh  запуск локального MCP-сервера для трекера и документации
+.opencode/tools/allure-mcp.sh     запуск локального MCP-сервера для системы управления тестами
 qa-artifacts/<run-id>/          результаты прогонов (в git не коммитятся, см. .gitignore)
 qa-artifacts/example-01/        синтетический пример контракта артефактов — единственный в git
 ```
@@ -154,7 +154,7 @@ qa-artifacts/example-01/        синтетический пример конт
 | `atlassian` | документация и трекер задач (в примере Jira и Confluence) | [mcp-atlassian](https://github.com/sooperset/mcp-atlassian) | 43: 22 на чтение, 21 на запись |
 | `testops` | управление тестами (в примере Allure TestOps) | [allure-testops-mcp](https://github.com/mshegolev/allure-testops-mcp) | 20: 13 на чтение, 7 на запись |
 
-Оба сервера берут адреса и токены из окружения, которое им передаёт обёртка из `.opencode/mcp/`.
+Оба сервера берут адреса и токены из окружения, которое им передаёт обёртка из `.opencode/tools/`.
 В самих обёртках и в конфигах нет ни адресов, ни токенов: адрес обязателен и задаётся снаружи,
 токен читается из файла.
 
@@ -207,13 +207,13 @@ chmod 600 ~/.config/opencode/mcp.env
 `JIRA_SSL_VERIFY` / `CONFLUENCE_SSL_VERIFY` (для самоподписанных сертификатов — `false`),
 `ALLURE_SSL_VERIFY`, `ALLURE_ENABLE_WRITE`, `TOOLSETS`, `MCP_JIRA_TOKEN_FILE`,
 `MCP_CONFLUENCE_TOKEN_FILE`, `MCP_ALLURE_TOKEN_FILE`, `*_SECRETS_DIR`. Подробности — в комментариях
-к скриптам `.opencode/mcp/`.
+к скриптам `.opencode/tools/`.
 
 ### Регистрация в opencode
 
 ```bash
-opencode mcp add atlassian --global -- bash "$PWD/.opencode/mcp/atlassian-mcp.sh"
-opencode mcp add testops   --global -- bash "$PWD/.opencode/mcp/allure-mcp.sh"
+opencode mcp add atlassian --global -- bash "$PWD/.opencode/tools/atlassian-mcp.sh"
+opencode mcp add testops   --global -- bash "$PWD/.opencode/tools/allure-mcp.sh"
 opencode mcp list          # ожидаем: ✓ atlassian connected и ✓ testops connected
 ```
 

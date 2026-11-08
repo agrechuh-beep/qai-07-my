@@ -68,7 +68,7 @@
         "type": "local",
         "command": [
           "bash",
-          ".opencode/mcp/atlassian-mcp.sh"
+          ".opencode/tools/atlassian-mcp.sh"
         ],
         "codemode": false
       },
@@ -76,7 +76,7 @@
         "type": "local",
         "command": [
           "bash",
-          ".opencode/mcp/allure-mcp.sh"
+          ".opencode/tools/allure-mcp.sh"
         ],
         "codemode": false
       }
