@@ -33,7 +33,8 @@ python3 evals/run_evals.py --min-pass-rate 0.8
 evals/runs/<run-id>/<EVC-XXX>/       артефакты прогона: 00-run.json … 05-summary-report.md,
                                      журнал запуска agent-run.log, маркер EVAL_MODE
 evals/reports/<run-id>/summary.md    отчёт: pass rate, разбивка по категориям и кейсам,
-                                     проверки безопасности, вердикты с доказательствами
+                                     проверки безопасности и контракта артефактов,
+                                     вердикты с доказательствами
 evals/reports/<run-id>/results.json  то же в машинном виде
 ```
 
