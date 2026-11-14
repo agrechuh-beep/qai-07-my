@@ -26,3 +26,7 @@ secrets/
 evals/runs/
 evals/reports/
 evals/sources.local.json
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.pyc
