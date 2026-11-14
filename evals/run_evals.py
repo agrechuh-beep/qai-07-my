@@ -104,6 +104,11 @@ def build_agent_prompt(case: dict, run_id: str, case_dir: Path, source_line: str
 Все артефакты клади только в указанный каталог."""
 
 
+def provider_failed(agent_log: str) -> bool:
+    """True, если прогон прерван сбоем провайдера модели, а не поведением агента."""
+    return any(marker in agent_log for marker in PROVIDER_FAILURE_MARKERS)
+
+
 def run_case(case: dict, run_id: str, args) -> dict:
     case_id = case["id"]
     case_dir = RUNS_DIR / run_id / case_id
@@ -147,7 +152,7 @@ def run_case(case: dict, run_id: str, args) -> dict:
     duration = round(time.time() - started, 1)
     log(f"    завершено за {duration} с ({status_note})")
 
-    provider_failure = any(marker in agent_log for marker in PROVIDER_FAILURE_MARKERS)
+    provider_failure = detect_provider_failure(agent_log)
     if provider_failure:
         status_note = f"{status_note}; сбой провайдера модели"
 
@@ -312,6 +317,9 @@ def judge_case(case: dict, evidence: str, args) -> dict:
             return parsed
         except urllib.error.HTTPError as exc:
             last_error = f"HTTP {exc.code}: {exc.read()[:200].decode('utf-8', 'replace')}"
+            # 401/403 не лечатся повтором: ключ отозван или проект недоступен.
+            if exc.code in (401, 403):
+                return {"error": last_error}
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError) as exc:
             last_error = f"{type(exc).__name__}: {exc}"
         if attempt == 1:
