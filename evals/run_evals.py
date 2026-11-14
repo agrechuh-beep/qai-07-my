@@ -353,6 +353,10 @@ def git_rev() -> str:
 def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
     total = len(results)
     judged = [r for r in results if not r.get("skipped") and not (r.get("judge") or {}).get("skipped")]
+    # Страховка: неполный прогон не должен считаться pass, даже если до summarize
+    # результат дошёл минуя run_case (например, при будущем рефакторинге).
+    for item in judged:
+        apply_verdict_guards(item)
     passed = [r for r in judged if r.get("verdict") == "pass"]
     rate = (len(passed) / len(judged)) if judged else 0.0
 
