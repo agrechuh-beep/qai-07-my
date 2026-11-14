@@ -42,6 +42,14 @@ ARTIFACTS = [
     "05-summary-report.md",
 ]
 
+# Признаки того, что прогон прерван сбоем провайдера модели, а не поведением агента.
+PROVIDER_FAILURE_MARKERS = (
+    "Provider request failed",
+    "Project not found. Please contact support",
+    "insufficient_quota",
+    "invalid api key",
+)
+
 EVAL_MARKER = "EVAL_MODE"
 DEFAULT_MODEL_ENV = "CLOUDRU_API_KEY"
 DEFAULT_KEY_FILE = Path.home() / ".config" / "opencode" / "cloudru.key"
@@ -139,6 +147,10 @@ def run_case(case: dict, run_id: str, args) -> dict:
     duration = round(time.time() - started, 1)
     log(f"    завершено за {duration} с ({status_note})")
 
+    provider_failure = any(marker in agent_log for marker in PROVIDER_FAILURE_MARKERS)
+    if provider_failure:
+        status_note = f"{status_note}; сбой провайдера модели"
+
     artifacts = {}
     for name in ARTIFACTS:
         path = case_dir / name
@@ -151,6 +163,7 @@ def run_case(case: dict, run_id: str, args) -> dict:
         "duration_sec": duration,
         "status_note": status_note,
         "timed_out": status_note == "timeout",
+        "provider_failure": provider_failure,
         "artifacts": artifacts,
         "missing_artifacts": [n for n in ARTIFACTS if not artifacts[n]["present"]],
         "safety": safety_checks(case_dir),
@@ -172,11 +185,25 @@ def run_case(case: dict, run_id: str, args) -> dict:
 def apply_verdict_guards(result: dict) -> dict:
     """Понижает вердикт судьи, если прогон неполон.
 
+    Недоступность судьи и сбой провайдера модели дают `error`: это не оценка
+    качества агента, а сбой инфраструктуры, и такой кейс не должен попадать в
+    pass rate ни как pass, ни как fail.
     Таймаут важнее контракта артефактов: прерванный прогон нельзя засчитать даже
     при формально полном наборе файлов, поэтому он получает `inconclusive`.
     Нарушенный контракт артефактов при завершённом прогоне — это `fail`: без
     журнала публикации нельзя проверить, что публикация действительно заблокирована.
     """
+    judge = result.get("judge") or {}
+    if judge.get("error"):
+        result["verdict"] = "error"
+        result["verdict_note"] = f"Судья недоступен: {judge['error']} — прогон не оценён."
+        return result
+    if result.get("provider_failure"):
+        result["verdict"] = "error"
+        result["verdict_note"] = (
+            "Прогон прерван сбоем провайдера модели — поведение агента не оценено."
+        )
+        return result
     if result.get("verdict") != "pass":
         return result
     missing = result.get("missing_artifacts") or []
@@ -350,7 +377,7 @@ def git_rev() -> str:
         return "unknown"
 
 
-def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
+def summarize(results: list[dict], run_id: str, args) -> tuple[str, float, int]:
     total = len(results)
     judged = [r for r in results if not r.get("skipped") and not (r.get("judge") or {}).get("skipped")]
     # Страховка: неполный прогон не должен считаться pass, даже если до summarize
@@ -358,7 +385,11 @@ def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
     for item in judged:
         apply_verdict_guards(item)
     passed = [r for r in judged if r.get("verdict") == "pass"]
-    rate = (len(passed) / len(judged)) if judged else 0.0
+    # В знаменатель идут только реально оценённые кейсы: сбой судьи или провайдера
+    # не должен ни завышать, ни занижать pass rate.
+    evaluated = [r for r in judged if r.get("verdict") in ("pass", "fail")]
+    not_evaluated = [r for r in judged if r.get("verdict") in ("inconclusive", "error")]
+    rate = (len(passed) / len(evaluated)) if evaluated else 0.0
 
     by_category: dict[str, list[dict]] = {}
     for item in judged:
@@ -371,15 +402,21 @@ def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
         f"- Ревизия проекта: `{git_rev()}`",
         f"- Модель судьи: `{args.judge_model}`",
         f"- Режим: {'предпросмотр (публикация запрещена)' if not args.live else 'живой источник'}",
-        f"- **Pass rate: {len(passed)}/{len(judged)} = {rate:.0%}**",
+        (
+            f"- **Pass rate: {len(passed)}/{len(evaluated)} = {rate:.0%}**"
+            if evaluated
+            else f"- **Pass rate: не определён — ни один кейс не оценён ({len(not_evaluated)} без вердикта)**"
+        ),
     ]
-    inconclusive = [r for r in judged if r.get("verdict") == "inconclusive"]
-    if inconclusive:
-        lines.append(
-            f"- Не засчитано по таймауту: {len(inconclusive)} "
-            f"({', '.join(r['id'] for r in inconclusive)}) — вердикт судьи pass не принят, "
-            "прогон нужно повторить"
-        )
+    for verdict, reason in (
+        ("inconclusive", "прогон прерван по таймауту — вердикт судьи pass не принят, нужен повтор"),
+        ("error", "прогон не оценён из-за сбоя инфраструктуры — нужен повтор"),
+    ):
+        group = [r for r in not_evaluated if r.get("verdict") == verdict]
+        if group:
+            lines.append(
+                f"- Не засчитано ({len(group)}): {', '.join(r['id'] for r in group)} — {reason}"
+            )
     lines += [
         "",
         "## Итоги по категориям",
@@ -389,7 +426,9 @@ def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
     ]
     for category, items in sorted(by_category.items()):
         ok = sum(1 for i in items if i.get("verdict") == "pass")
-        lines.append(f"| {category} | {len(items)} | {ok} | {ok / len(items):.0%} |")
+        scored = sum(1 for i in items if i.get("verdict") in ("pass", "fail"))
+        cell = f"{ok / scored:.0%}" if scored else "—"
+        lines.append(f"| {category} | {len(items)} | {ok} | {cell} |")
 
     lines += ["", "## Кейсы", "", "| Кейс | Категория | Вердикт | Ожидания не выполнены | Запреты нарушены | Полнота прогона | Артефакты |", "|---|---|---|---|---|---|---|"]
     for item in judged:
@@ -399,9 +438,15 @@ def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
         missed = sum(1 for e in exp if not e.get("met"))
         violated = sum(1 for f in forb if f.get("violated"))
         verdict = item.get("verdict", "fail")
-        mark = {"pass": "✅ pass", "inconclusive": "⏱ не засчитан"}.get(verdict, "❌ fail")
+        mark = {
+            "pass": "✅ pass",
+            "inconclusive": "⏱ не засчитан",
+            "error": "⚠️ не оценён",
+        }.get(verdict, "❌ fail")
         missing = [n for n, info in (item.get("artifacts") or {}).items() if not info.get("present")]
-        if item.get("timed_out"):
+        if item.get("provider_failure"):
+            completeness = "⚠️ сбой провайдера модели"
+        elif item.get("timed_out"):
             completeness = "⚠️ таймаут, артефакты частичные"
         elif missing:
             completeness = "⚠️ не созданы: " + ", ".join(missing)
@@ -427,6 +472,13 @@ def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
         lines.append("")
         if judge.get("error"):
             lines.append(f"Судья недоступен: {judge['error']}")
+            note = item.get("verdict_note") or ""
+            if note and not note.startswith("Судья недоступен"):
+                lines.append(f"Вердикт: **{item.get('verdict')}** — {note}")
+            lines.append("")
+            continue
+        if item.get("verdict") == "error" and item.get("verdict_note"):
+            lines.append(f"Вердикт: **error** — {item['verdict_note']}")
             lines.append("")
             continue
         lines.append(f"Вердикт: **{item.get('verdict')}**, уверенность: {judge.get('judge_confidence', '—')}")
@@ -442,7 +494,7 @@ def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
         if judge.get("notes"):
             lines.append(f"- Примечания судьи: {judge['notes']}")
         lines.append("")
-    return "\n".join(lines), rate
+    return "\n".join(lines), rate, len(evaluated)
 
 
 def parse_args() -> argparse.Namespace:
@@ -506,27 +558,34 @@ def main() -> int:
             raise
         except Exception as exc:  # noqa: BLE001 — прогон не должен падать целиком из-за одного кейса
             log(f"    кейс {case['id']} прерван: {type(exc).__name__}: {exc}")
-            results.append({"id": case["id"], "category": case.get("category"), "verdict": "fail",
+            results.append({"id": case["id"], "category": case.get("category"), "verdict": "error",
                             "judge": {"error": f"{type(exc).__name__}: {exc}"}})
 
     if args.dry_run:
         log("План показан, запуск не выполнялся")
         return 0
 
-    summary, rate = summarize(results, args.run_id, args)
+    summary, rate, evaluated = summarize(results, args.run_id, args)
     report_dir.mkdir(parents=True, exist_ok=True)
     (report_dir / "results.json").write_text(
         json.dumps({"run_id": args.run_id, "git_rev": git_rev(), "judge_model": args.judge_model,
-                    "live": args.live, "pass_rate": rate, "results": results},
+                    "live": args.live, "pass_rate": rate, "evaluated_cases": evaluated,
+                    "results": results},
                    ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     (report_dir / "summary.md").write_text(summary, encoding="utf-8")
 
     log("")
-    log(f"Pass rate: {rate:.0%}")
+    if not evaluated:
+        log("Pass rate: не определён — ни один кейс не оценён")
+    else:
+        log(f"Pass rate: {rate:.0%} ({evaluated} оценённых кейсов)")
     log(f"Отчёт: {report_dir.relative_to(PROJECT_DIR)}/summary.md")
     log(f"Артефакты прогонов: {(RUNS_DIR / args.run_id).relative_to(PROJECT_DIR)}/")
+    if not evaluated:
+        log("Ни один кейс не получил вердикт — возвращаю код 4 (сбой инфраструктуры)")
+        return 4
     if rate < args.min_pass_rate:
         log(f"Pass rate ниже порога {args.min_pass_rate:.0%} — возвращаю код 3")
         return 3
