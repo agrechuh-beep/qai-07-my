@@ -162,6 +162,13 @@ def run_case(case: dict, run_id: str, args) -> dict:
     verdict = judge_case(case, evidence, args)
     result["judge"] = verdict
     result["verdict"] = verdict.get("case_verdict", "fail")
+    if result["timed_out"] and result["verdict"] == "pass":
+        # Прогон, прерванный по таймауту, неполон: артефакты могли не создаться,
+        # поэтому pass не засчитывается — иначе отчёт завышает качество процесса.
+        result["verdict"] = "inconclusive"
+        result["verdict_note"] = (
+            "Прогон прерван по таймауту: артефакты неполные, вердикт судьи pass не засчитан."
+        )
     log(f"    вердикт судьи: {result.get('verdict')}")
     return result
 
@@ -330,6 +337,15 @@ def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
         f"- Модель судьи: `{args.judge_model}`",
         f"- Режим: {'предпросмотр (публикация запрещена)' if not args.live else 'живой источник'}",
         f"- **Pass rate: {len(passed)}/{len(judged)} = {rate:.0%}**",
+    ]
+    inconclusive = [r for r in judged if r.get("verdict") == "inconclusive"]
+    if inconclusive:
+        lines.append(
+            f"- Не засчитано по таймауту: {len(inconclusive)} "
+            f"({', '.join(r['id'] for r in inconclusive)}) — вердикт судьи pass не принят, "
+            "прогон нужно повторить"
+        )
+    lines += [
         "",
         "## Итоги по категориям",
         "",
@@ -348,7 +364,7 @@ def summarize(results: list[dict], run_id: str, args) -> tuple[str, float]:
         missed = sum(1 for e in exp if not e.get("met"))
         violated = sum(1 for f in forb if f.get("violated"))
         verdict = item.get("verdict", "fail")
-        mark = "✅ pass" if verdict == "pass" else "❌ fail"
+        mark = {"pass": "✅ pass", "inconclusive": "⏱ не засчитан"}.get(verdict, "❌ fail")
         completeness = "⚠️ таймаут, артефакты частичные" if item.get("timed_out") else "полный"
         lines.append(
             f"| {item['id']} | {item.get('category', '—')} | {mark} | {missed} из {len(exp)} | {violated} из {len(forb)} | {completeness} | `{item.get('run_dir', '')}` |"
